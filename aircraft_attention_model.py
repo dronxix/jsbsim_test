@@ -1,7 +1,7 @@
 """
 Aircraft Attention Model - Трансформерная модель для управления самолетами
 Адаптирована под JSBSim и воздушные бои с иерархическим управлением
-ИСПРАВЛЕНА ВЕРСИЯ - добавлены недостающие импорты и исправлены ошибки
+ИСПРАВЛЕННАЯ ВЕРСИЯ - фиксы ошибок размерностей тензоров
 """
 
 import numpy as np
@@ -10,7 +10,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from typing import Optional, List, Dict, Any
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
-from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper  # ИСПРАВЛЕНИЕ: добавлен импорт
+from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.models import ModelCatalog
 import math
 
@@ -503,18 +503,41 @@ class AircraftActionDistribution(TorchDistributionWrapper):
         weapon = self.weapon_dist.sample().float()
         fire = self.fire_dist.sample().float()
         
-        # Управление полетом (уже ограничено моделью)
+        # ИСПРАВЛЕНИЕ: Управление полетом (уже ограничено моделью)
         aileron = self.aileron_val.squeeze(-1)
         elevator = self.elevator_val.squeeze(-1)
         rudder = self.rudder_val.squeeze(-1)
         throttle = self.throttle_val.squeeze(-1)
         
-        # Объединяем
-        flat_action = torch.cat([
-            target.unsqueeze(-1), maneuver.unsqueeze(-1), 
-            weapon.unsqueeze(-1), fire.unsqueeze(-1),
-            aileron.unsqueeze(-1), elevator.unsqueeze(-1),
-            rudder.unsqueeze(-1), throttle.unsqueeze(-1)
+        # ИСПРАВЛЕНИЕ: Убеждаемся что все тензоры имеют размерность [batch_size]
+        batch_size = target.shape[0] if target.dim() > 0 else 1
+        
+        # Приводим к одинаковой размерности
+        if target.dim() == 0:
+            target = target.unsqueeze(0)
+        if maneuver.dim() == 0:
+            maneuver = maneuver.unsqueeze(0)
+        if weapon.dim() == 0:
+            weapon = weapon.unsqueeze(0)
+        if fire.dim() == 0:
+            fire = fire.unsqueeze(0)
+        if aileron.dim() == 0:
+            aileron = aileron.unsqueeze(0)
+        if elevator.dim() == 0:
+            elevator = elevator.unsqueeze(0)
+        if rudder.dim() == 0:
+            rudder = rudder.unsqueeze(0)
+        if throttle.dim() == 0:
+            throttle = throttle.unsqueeze(0)
+        
+        # Убираем лишние размерности если есть
+        if fire.dim() > 1:
+            fire = fire.squeeze(-1)
+        
+        # ИСПРАВЛЕНИЕ: Используем stack вместо cat для тензоров одинакового размера
+        flat_action = torch.stack([
+            target, maneuver, weapon, fire,
+            aileron, elevator, rudder, throttle
         ], dim=-1)
         
         self.last_sample = flat_action
@@ -527,17 +550,41 @@ class AircraftActionDistribution(TorchDistributionWrapper):
         weapon = torch.argmax(self.weapon_dist.logits, dim=-1).float()
         fire = (self.fire_dist.logits > 0).float()
         
-        # Управление полетом
+        # ИСПРАВЛЕНИЕ: Управление полетом - убеждаемся что все тензоры имеют одинаковую размерность
         aileron = self.aileron_val.squeeze(-1)
         elevator = self.elevator_val.squeeze(-1)
         rudder = self.rudder_val.squeeze(-1)
         throttle = self.throttle_val.squeeze(-1)
         
-        flat_action = torch.cat([
-            target.unsqueeze(-1), maneuver.unsqueeze(-1),
-            weapon.unsqueeze(-1), fire.unsqueeze(-1),
-            aileron.unsqueeze(-1), elevator.unsqueeze(-1),
-            rudder.unsqueeze(-1), throttle.unsqueeze(-1)
+        # ИСПРАВЛЕНИЕ: Убеждаемся что все тензоры имеют размерность [batch_size]
+        batch_size = target.shape[0] if target.dim() > 0 else 1
+        
+        # Проверяем и приводим все к одинаковой размерности
+        if target.dim() == 0:
+            target = target.unsqueeze(0)
+        if maneuver.dim() == 0:
+            maneuver = maneuver.unsqueeze(0)
+        if weapon.dim() == 0:
+            weapon = weapon.unsqueeze(0)
+        if fire.dim() == 0:
+            fire = fire.unsqueeze(0)
+        if aileron.dim() == 0:
+            aileron = aileron.unsqueeze(0)
+        if elevator.dim() == 0:
+            elevator = elevator.unsqueeze(0)
+        if rudder.dim() == 0:
+            rudder = rudder.unsqueeze(0)
+        if throttle.dim() == 0:
+            throttle = throttle.unsqueeze(0)
+        
+        # Если есть лишние размерности, убираем их
+        if fire.dim() > 1:
+            fire = fire.squeeze(-1)
+        
+        # ИСПРАВЛЕНИЕ: Объединяем тензоры с одинаковой размерностью
+        flat_action = torch.stack([
+            target, maneuver, weapon, fire,
+            aileron, elevator, rudder, throttle
         ], dim=-1)
         
         self.last_sample = flat_action
@@ -556,11 +603,10 @@ class AircraftActionDistribution(TorchDistributionWrapper):
             rudder = torch.tensor(x["rudder"]).float()
             throttle = torch.tensor(x["throttle"]).float()
             
-            x = torch.cat([
-                target.float().unsqueeze(-1), maneuver.float().unsqueeze(-1),
-                weapon.float().unsqueeze(-1), fire.unsqueeze(-1),
-                aileron.unsqueeze(-1), elevator.unsqueeze(-1),
-                rudder.unsqueeze(-1), throttle.unsqueeze(-1)
+            x = torch.stack([
+                target.float(), maneuver.float(),
+                weapon.float(), fire,
+                aileron, elevator, rudder, throttle
             ], dim=-1)
         elif isinstance(x, np.ndarray):
             x = torch.from_numpy(x).float()
