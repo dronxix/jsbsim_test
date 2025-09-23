@@ -12,7 +12,7 @@ from typing import Dict, List, Any, Optional, Tuple
 from dataclasses import dataclass
 import colorsys
 from matplotlib.patches import Circle
-from matplotlib.collections import Line3DCollection
+from matplotlib.collections import LineCollection
 import matplotlib.patches as mpatches
 
 # Цвета для команд
@@ -233,7 +233,7 @@ class AircraftVisualizer:
                 colors.append((*plt.colors.to_rgb(color), alpha))
             
             if segments:
-                line_collection = Line3DCollection(segments, colors=colors, linewidths=2)
+                line_collection = LineCollection(segments, colors=colors, linewidths=2)
                 self.trail_plots[aircraft_id] = self.ax.add_collection3d(line_collection)
     
     def _draw_radar_range(self, aircraft_id: str, position: List[float], radar_range: float):

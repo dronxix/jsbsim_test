@@ -1,6 +1,7 @@
 """
 Aircraft Attention Model - Трансформерная модель для управления самолетами
 Адаптирована под JSBSim и воздушные бои с иерархическим управлением
+ИСПРАВЛЕНА ВЕРСИЯ - добавлены недостающие импорты и исправлены ошибки
 """
 
 import numpy as np
@@ -9,6 +10,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from typing import Optional, List, Dict, Any
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
+from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper  # ИСПРАВЛЕНИЕ: добавлен импорт
 from ray.rllib.models import ModelCatalog
 import math
 
@@ -431,7 +433,7 @@ class AircraftActionDistribution(TorchDistributionWrapper):
         throttle = inputs[..., idx:idx+1]; idx += 1
         
         # Создаем дистрибуции
-        from torch.distributions import Categorical, Bernoulli, Beta
+        from torch.distributions import Categorical, Bernoulli
         
         self.target_dist = Categorical(logits=target_logits)
         self.maneuver_dist = Categorical(logits=maneuver_logits)
@@ -439,7 +441,6 @@ class AircraftActionDistribution(TorchDistributionWrapper):
         self.fire_dist = Bernoulli(logits=fire_logits)
         
         # Для управления полетом используем ограниченные распределения
-        # Преобразуем в параметры Beta распределения для более стабильного обучения
         self.aileron_val = aileron
         self.elevator_val = elevator
         self.rudder_val = rudder
@@ -589,7 +590,6 @@ class AircraftActionDistribution(TorchDistributionWrapper):
                              torch.log(1 - fire_p + 1e-8))
         
         # Для непрерывных управляющих действий используем простую гауссову оценку
-        # (в реальности стоило бы использовать более точные распределения)
         lp_aileron = -0.5 * (aileron_val - self.aileron_val.squeeze(-1)).pow(2)
         lp_elevator = -0.5 * (elevator_val - self.elevator_val.squeeze(-1)).pow(2)
         lp_rudder = -0.5 * (rudder_val - self.rudder_val.squeeze(-1)).pow(2)
@@ -619,7 +619,4 @@ class AircraftActionDistribution(TorchDistributionWrapper):
 
 # Регистрируем модель и дистрибуцию
 ModelCatalog.register_custom_model("aircraft_transformer", AircraftTransformerModel)
-
-# Импорт TorchDistributionWrapper
-from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 ModelCatalog.register_custom_action_dist("aircraft_actions", AircraftActionDistribution)
