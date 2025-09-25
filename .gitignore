@@ -1,2 +1,6 @@
 __pycache__
 .vscode
+policy_selector_state*
+aircraft
+engine
+training_results

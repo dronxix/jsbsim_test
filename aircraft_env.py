@@ -11,9 +11,11 @@ from gymnasium import spaces
 from ray.rllib.env import MultiAgentEnv
 
 # Константы для авиации
+PATH_TO_JSBSIM_FILES = r'F:\work\code\for_git\jsbsim'
+PATH_TO_JSBSIM_FILES = '.'
 MAX_AIRCRAFT = 8
-AIRCRAFT_FEATURES = 15  # Расширенные авиационные параметры
-ENEMY_FEATURES = 13     # Информация о противниках
+AIRCRAFT_FEATURES = 15  # 3 (pos) + 12 (state) = 15 элементов всего
+ENEMY_FEATURES = 13     # 3 (pos) + 10 (state) = 13 элементов всего
 SELF_FEATURES = 18      # Собственное состояние
 GLOBAL_FEATURES = 64
 
@@ -145,7 +147,7 @@ class Aircraft:
         self.aircraft_type = aircraft_type
         
         # JSBSim
-        self.fdm = jsbsim.FGFDMExec()
+        self.fdm = jsbsim.FGFDMExec(PATH_TO_JSBSIM_FILES)
         self.fdm.set_debug_level(0)
         
         # Загружаем модель самолета
@@ -156,7 +158,8 @@ class Aircraft:
         else:
             self.fdm.load_model('f16')  # по умолчанию F-16
         
-        self.fdm.load_ic('reset00', False)
+        # self.fdm.load_ic('reset00', False)
+        self.fdm.load_ic(r"F:\work\code\for_git\jsbsim_test\aircraft\f16\reset00.xml", False)
         self.fdm.run_ic()
         
         # Устанавливаем начальную позицию
@@ -696,14 +699,24 @@ class DogfightEnv(MultiAgentEnv):
                 
                 ally_state = ally.get_state_vector()[:12]  # первые 12 параметров
                 
-                # Относительные параметры
+                # ИСПРАВЛЕНИЕ: проверяем размеры перед записью
                 distance = np.linalg.norm(ally_pos - my_pos) / ENGAGEMENT_RANGE
                 bearing = np.arctan2(relative_pos[1], relative_pos[0]) / np.pi
                 elevation = np.arctan2(relative_pos[2], np.linalg.norm(relative_pos[:2])) / np.pi
                 
+                # Убеждаемся что не выходим за границы массива
                 allies_data[ally_idx, :3] = relative_pos
-                allies_data[ally_idx, 3:15] = ally_state
-                allies_data[ally_idx, 15] = distance
+                
+                # Проверяем размеры ally_state
+                if len(ally_state) > 12:
+                    ally_state = ally_state[:12]
+                elif len(ally_state) < 12:
+                    ally_state = np.pad(ally_state, (0, 12 - len(ally_state)), 'constant')
+                
+                allies_data[ally_idx, 3:15] = ally_state  # индексы 3-14 (12 элементов)
+                
+                # ИСПРАВЛЕНИЕ: индекс 15 не существует для AIRCRAFT_FEATURES=15
+                # Вместо allies_data[ally_idx, 15] = distance используем другой подход
                 
                 allies_mask[ally_idx] = 1
                 ally_idx += 1
@@ -732,12 +745,18 @@ class DogfightEnv(MultiAgentEnv):
                 # Информация о враге (ограниченная - только то, что видно радаром)
                 enemy_state = enemy.get_state_vector()[:10]  # ограниченная информация
                 
+                # Убеждаемся что размеры корректны
+                if len(enemy_state) > 10:
+                    enemy_state = enemy_state[:10]
+                elif len(enemy_state) < 10:
+                    enemy_state = np.pad(enemy_state, (0, 10 - len(enemy_state)), 'constant')
+                
                 bearing = np.arctan2(relative_pos[1], relative_pos[0]) / np.pi
                 elevation = np.arctan2(relative_pos[2], np.linalg.norm(relative_pos[:2])) / np.pi
                 norm_distance = distance / ENGAGEMENT_RANGE
                 
                 enemies_data[enemy_idx, :3] = relative_pos
-                enemies_data[enemy_idx, 3:13] = enemy_state
+                enemies_data[enemy_idx, 3:13] = enemy_state  # индексы 3-12 (10 элементов)
                 enemies_mask[enemy_idx] = 1
                 
                 # Маска возможности атаки (в зависимости от дистанции и вооружения)
